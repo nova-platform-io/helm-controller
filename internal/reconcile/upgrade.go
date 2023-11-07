@@ -73,6 +73,9 @@ func (r *Upgrade) Reconcile(ctx context.Context, req *Request) error {
 
 	defer summarize(req)
 
+	// Mark upgrade attempt on object.
+	req.Object.Status.LastAttemptedReleaseAction = v2.ReleaseActionUpgrade
+
 	// Run the Helm upgrade action.
 	_, err := action.Upgrade(ctx, cfg, req.Object, req.Chart, req.Values)
 	if err != nil {

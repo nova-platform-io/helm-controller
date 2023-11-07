@@ -73,6 +73,9 @@ func (r *Install) Reconcile(ctx context.Context, req *Request) error {
 
 	defer summarize(req)
 
+	// Mark install attempt on object.
+	req.Object.Status.LastAttemptedReleaseAction = v2.ReleaseActionInstall
+
 	// Run the Helm install action.
 	_, err := action.Install(ctx, cfg, req.Object, req.Chart, req.Values)
 	if err != nil {

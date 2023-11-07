@@ -17,111 +17,111 @@ limitations under the License.
 package reconcile
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	helmrelease "helm.sh/helm/v3/pkg/release"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/fluxcd/pkg/runtime/logger"
-
-	v2 "github.com/fluxcd/helm-controller/api/v2beta2"
 	"github.com/fluxcd/helm-controller/internal/action"
+	interrors "github.com/fluxcd/helm-controller/internal/errors"
+	"github.com/fluxcd/helm-controller/internal/release"
 )
 
-var (
-	// ErrNoRetriesRemain is returned when there are no remaining retry
-	// attempts for the provided release config.
-	ErrNoRetriesRemain = errors.New("no retries remain")
+// ReleaseStatus represents the status of a Helm release as determined by
+// comparing the Helm storage with the v2beta2.HelmRelease object.
+type ReleaseStatus string
+
+// String returns the string representation of the release status.
+func (s ReleaseStatus) String() string {
+	return string(s)
+}
+
+const (
+	// ReleaseStatusUnknown indicates that the status of the release could not
+	// be determined.
+	ReleaseStatusUnknown ReleaseStatus = "Unknown"
+	// ReleaseStatusAbsent indicates that the release is not present in the
+	// Helm storage.
+	ReleaseStatusAbsent ReleaseStatus = "Absent"
+	// ReleaseStatusOrphaned indicates that the release is present in the Helm
+	// storage, but is not managed by the v2beta2.HelmRelease object.
+	ReleaseStatusOrphaned ReleaseStatus = "Orphaned"
+	// ReleaseStatusOutOfSync indicates that the release is present in the Helm
+	// storage, but is not in sync with the v2beta2.HelmRelease object.
+	ReleaseStatusOutOfSync ReleaseStatus = "OutOfSync"
+	// ReleaseStatusLocked indicates that the release is present in the Helm
+	// storage, but is locked.
+	ReleaseStatusLocked ReleaseStatus = "Locked"
+	// ReleaseStatusUntested indicates that the release is present in the Helm
+	// storage, but has not been tested.
+	ReleaseStatusUntested ReleaseStatus = "Untested"
+	// ReleaseStatusInSync indicates that the release is present in the Helm
+	// storage, and is in sync with the v2beta2.HelmRelease object.
+	ReleaseStatusInSync ReleaseStatus = "InSync"
+	// ReleaseStatusFailed indicates that the release is present in the Helm
+	// storage, but has failed.
+	ReleaseStatusFailed ReleaseStatus = "Failed"
 )
 
-// NextAction determines the action that should be performed for the release
-// by verifying the integrity of the Helm storage and further state of the
-// release, and comparing the Request.Chart and Request.Values to the latest
-// release. It can be called repeatedly to step through the reconciliation
-// process until it ends up in a state as desired by the Request.Object,
-// or no retries remain.
-func NextAction(ctx context.Context, cfg *action.ConfigFactory, recorder record.EventRecorder, req *Request) (ActionReconciler, error) {
-	log := ctrl.LoggerFrom(ctx).V(logger.InfoLevel)
-	config := cfg.Build(nil)
-	cur := req.Object.GetCurrent().DeepCopy()
+// ReleaseState represents the state of a Helm release as determined by
+// comparing the Helm storage with the v2beta2.HelmRelease object.
+type ReleaseState struct {
+	// Status is the status of the release.
+	Status ReleaseStatus
+	// Reason for the Status.
+	Reason string
+}
 
-	// Verify the current release is still in storage and unmodified.
-	rls, err := action.VerifyLastStorageItem(config, cur)
-	switch err {
-	case nil:
-		// Noop
-	case action.ErrReleaseNotFound:
-		// If we do not have a current release, we should either install or upgrade
-		// the release depending on the state of the storage.
-		ok, err := action.IsInstalled(config, req.Object.GetReleaseName())
-		if err != nil {
-			return nil, fmt.Errorf("cannot confirm if release is already installed: %w", err)
+// MustResetHistory returns true if the release state indicates that the
+// history on the v2beta2.HelmRelease object must be reset.
+// This is the case when the release in storage has been mutated in such a way
+// that it no longer can be used to roll back to, or perform a diff against.
+func (s ReleaseState) MustResetHistory() bool {
+	return s.Status == ReleaseStatusLocked || s.Status == ReleaseStatusOrphaned || s.Status == ReleaseStatusAbsent
+}
+
+func DetermineReleaseState(cfg *action.ConfigFactory, req *Request) (ReleaseState, error) {
+	rls, err := action.LastRelease(cfg.Build(nil), req.Object.GetReleaseName())
+	if err != nil {
+		if errors.Is(err, action.ErrReleaseNotFound) {
+			return ReleaseState{Status: ReleaseStatusAbsent, Reason: "no release in storage for object"}, nil
 		}
-
-		if ok {
-			log.Info("found existing release in storage that is not owned by this HelmRelease")
-			return NewUpgrade(cfg, recorder), nil
-		}
-
-		log.Info("no release found in storage")
-		return NewInstall(cfg, recorder), nil
-	case action.ErrReleaseDisappeared:
-		log.Info(fmt.Sprintf("unable to verify last release in storage: %s", err.Error()))
-		return NewInstall(cfg, recorder), nil
-	case action.ErrReleaseNotObserved, action.ErrReleaseDigest:
-		log.Info(fmt.Sprintf("verification of last release in storage failed: %s", err.Error()))
-		return NewUpgrade(cfg, recorder), nil
-	default:
-		return nil, fmt.Errorf("cannot verify current release in storage: %w", err)
+		return ReleaseState{Status: ReleaseStatusUnknown}, fmt.Errorf("failed to determine last release: %w", err)
 	}
 
-	// If the release is in a pending state, the release process likely failed
-	// unexpectedly. Unlock the release and e.g. retry again.
+	ctrl.Log.Info("DetermineReleaseState", "rls", release.ObserveRelease(rls))
+
 	if rls.Info.Status.IsPending() {
-		log.Info("observed release is in a stale pending state")
-		return NewUnlock(cfg, recorder), nil
+		return ReleaseState{Status: ReleaseStatusLocked, Reason: fmt.Sprintf("release with status '%s'", rls.Info.Status)}, err
 	}
 
-	remediation := req.Object.GetActiveRemediation()
-
-	// A release in a failed state is different from any of the other states in
-	// that the action also needs to happen a last time when no retries remain.
-	if rls.Info.Status == helmrelease.StatusFailed {
-		if remediation.GetFailureCount(req.Object) <= 0 {
-			// If the chart version and/or values have changed, the failure count(s)
-			// are reset. This short circuits any remediation attempt to force an
-			// upgrade with the new configuration instead.
-			log.Info("observed release in a failed state is out of sync with desired state")
-			return NewUpgrade(cfg, recorder), nil
+	cur := req.Object.GetCurrent()
+	if cur == nil {
+		if rls.Info.Status == helmrelease.StatusUninstalled {
+			return ReleaseState{Status: ReleaseStatusAbsent, Reason: "found uninstalled release in storage"}, nil
 		}
-		log.Info("observed release is in a failed state")
-		return rollbackOrUninstall(ctx, cfg, recorder, req)
+		return ReleaseState{Status: ReleaseStatusOrphaned, Reason: "found existing release in storage not managed by object"}, err
+	}
+	if err := action.VerifyReleaseObject(cur, rls); err != nil {
+		if interrors.IsOneOf(err, action.ErrReleaseDigest, action.ErrReleaseNotObserved) {
+			return ReleaseState{Status: ReleaseStatusOrphaned, Reason: err.Error()}, nil
+		}
+		return ReleaseState{Status: ReleaseStatusUnknown}, fmt.Errorf("failed to verify release object against current: %w", err)
 	}
 
-	// Short circuit if we are out of retries.
-	if remediation.RetriesExhausted(req.Object) {
-		return nil, fmt.Errorf("%w: ignoring release in %s state", ErrNoRetriesRemain, rls.Info.Status)
-	}
-
-	// Act on the state of the release.
 	switch rls.Info.Status {
+	case helmrelease.StatusFailed:
+		return ReleaseState{Status: ReleaseStatusFailed}, nil
 	case helmrelease.StatusUninstalled, helmrelease.StatusSuperseded:
-		log.Info(fmt.Sprintf("observed release is in a %s state", rls.Info.Status))
-		return NewInstall(cfg, recorder), nil
+		return ReleaseState{Status: ReleaseStatusAbsent, Reason: fmt.Sprintf("release with status '%s'", rls.Info.Status)}, nil
 	case helmrelease.StatusDeployed:
-		// Confirm the current release matches the desired config.
 		if err = action.VerifyRelease(rls, cur, req.Chart.Metadata, req.Values); err != nil {
 			switch err {
 			case action.ErrChartChanged, action.ErrConfigDigest:
-				log.Info(fmt.Sprintf("observed release is out of sync with desired state: %s", err.Error()))
-				return NewUpgrade(cfg, recorder), nil
+				return ReleaseState{Status: ReleaseStatusOutOfSync, Reason: err.Error()}, nil
 			default:
-				// Error out on any other error as we cannot determine what
-				// the state and should e.g. retry.
-				return nil, err
+				return ReleaseState{Status: ReleaseStatusUnknown}, err
 			}
 		}
 
@@ -131,52 +131,17 @@ func NextAction(ctx context.Context, cfg *action.ConfigFactory, recorder record.
 		if testSpec := req.Object.GetTest(); testSpec.Enable {
 			// Confirm the release has been tested if enabled.
 			if !req.Object.GetCurrent().HasBeenTested() {
-				log.Info("observed release has not been tested")
-				return NewTest(cfg, recorder), nil
+				return ReleaseState{Status: ReleaseStatusUntested}, nil
 			}
+
 			// Act on any observed test failure.
-			if !remediation.MustIgnoreTestFailures(req.Object.GetTest().IgnoreFailures) &&
-				req.Object.GetCurrent().HasTestInPhase(helmrelease.HookPhaseFailed.String()) {
-				log.Info("observed release has failed tests")
-				return rollbackOrUninstall(ctx, cfg, recorder, req)
+			remedation := req.Object.GetActiveRemediation()
+			if !remedation.MustIgnoreTestFailures(testSpec.IgnoreFailures) && req.Object.GetCurrent().HasTestInPhase(helmrelease.HookPhaseFailed.String()) {
+				return ReleaseState{Status: ReleaseStatusFailed, Reason: "has failed test"}, nil
 			}
 		}
+		return ReleaseState{Status: ReleaseStatusInSync}, nil
+	default:
+		return ReleaseState{Status: ReleaseStatusUnknown}, fmt.Errorf("unknown release status: %s", rls.Info.Status)
 	}
-
-	return nil, nil
-}
-
-// rollbackOrUninstall determines if the release should be rolled back or
-// uninstalled based on the active remediation strategy. If the release
-// must be rolled back, the target revision is verified to be in storage
-// before returning the RollbackRemediation. If the verification fails,
-// Upgrade is returned as a remediation action to ensure continuity.
-func rollbackOrUninstall(ctx context.Context, cfg *action.ConfigFactory, recorder record.EventRecorder, req *Request) (ActionReconciler, error) {
-	remediation := req.Object.GetActiveRemediation()
-	if !remediation.RetriesExhausted(req.Object) || remediation.MustRemediateLastFailure() {
-		switch remediation.GetStrategy() {
-		case v2.RollbackRemediationStrategy:
-			// Verify the previous release is still in storage and unmodified
-			// before instructing to roll back to it.
-			if _, err := action.VerifySnapshot(cfg.Build(nil), req.Object.GetPrevious()); err != nil {
-				switch err {
-				case action.ErrReleaseNotFound, action.ErrReleaseDisappeared,
-					action.ErrReleaseNotObserved, action.ErrReleaseDigest:
-					// If the rollback target is not found or is in any other
-					// way corrupt, the most correct remediation is to reattempt
-					// the upgrade.
-					ctrl.LoggerFrom(ctx).V(logger.InfoLevel).Info(
-						fmt.Sprintf("unable to verify previous release in storage: %s", err.Error()),
-					)
-					return NewUpgrade(cfg, recorder), nil
-				default:
-					return nil, err
-				}
-			}
-			return NewRollbackRemediation(cfg, recorder), nil
-		case v2.UninstallRemediationStrategy:
-			return NewUninstallRemediation(cfg, recorder), nil
-		}
-	}
-	return nil, fmt.Errorf("%w: can not remediate %s state", ErrNoRetriesRemain, req.Object.GetCurrent().Status)
 }
