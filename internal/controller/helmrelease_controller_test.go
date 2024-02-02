@@ -2286,3 +2286,39 @@ func Test_isHelmChartReady(t *testing.T) {
 		})
 	}
 }
+
+func Test_hasConditionReason(t *testing.T) {
+	tests := []struct {
+		name           string
+		existingReason string
+		checkReasons   []string
+		want           bool
+	}{
+		{
+			name:           "no check reason",
+			existingReason: v2.DependencyNotReadyReason,
+			want:           false,
+		},
+		{
+			name:           "no known reason",
+			existingReason: v2.DependencyNotReadyReason,
+			checkReasons:   []string{v2.ArtifactFailedReason, acl.AccessDeniedReason},
+			want:           false,
+		},
+		{
+			name:           "known and unknown reasons",
+			existingReason: v2.ArtifactFailedReason,
+			checkReasons:   []string{acl.AccessDeniedReason, v2.ArtifactFailedReason},
+			want:           true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj := &v2.HelmRelease{}
+			conditions.MarkFalse(obj, meta.ReadyCondition, tt.existingReason, "foo")
+			if got := hasConditionReason(obj, meta.ReadyCondition, tt.checkReasons...); got != tt.want {
+				t.Errorf("hasConditionReason() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
