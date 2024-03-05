@@ -108,11 +108,17 @@ func (r *HelmReleaseReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &v2.HelmRelease{}, v2.SourceIndexKey,
 		func(o client.Object) []string {
 			obj := o.(*v2.HelmRelease)
+			namespacedName := types.NamespacedName{}
+			if obj.Spec.ChartRef != nil {
+				namespacedName.Namespace = obj.Spec.ChartRef.Namespace
+				namespacedName.Name = obj.Spec.ChartRef.Name
+			} else {
+				namespacedName.Namespace = obj.Spec.Chart.GetNamespace(obj.GetNamespace())
+				namespacedName.Name = obj.GetHelmChartName()
+			}
+
 			return []string{
-				types.NamespacedName{
-					Namespace: obj.Spec.Chart.GetNamespace(obj.GetNamespace()),
-					Name:      obj.GetHelmChartName(),
-				}.String(),
+				namespacedName.String(),
 			}
 		},
 	); err != nil {
@@ -129,6 +135,11 @@ func (r *HelmReleaseReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 		Watches(
 			&sourcev1.HelmChart{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForHelmChartChange),
+			builder.WithPredicates(intpredicates.SourceRevisionChangePredicate{}),
+		).
+		Watches(
+			&sourcev1.OCIRepository{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForOCIRrepositoryChange),
 			builder.WithPredicates(intpredicates.SourceRevisionChangePredicate{}),
 		).
 		WithOptions(controller.Options{
