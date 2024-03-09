@@ -74,14 +74,15 @@ type PostRenderer struct {
 }
 
 // HelmReleaseSpec defines the desired state of a Helm release.
-// +kubebuilder:validation:XValidation:rule="(has(self.chart) && !has(self.chartRef) || (!has(self.chart) && has(self.chartRef))", message="either chart or chartRef must be set"
+// +kubebuilder:validation:XValidation:rule="(has(self.chart) && !has(self.chartRef)) || (!has(self.chart) && has(self.chartRef))", message="either chart or chartRef must be set"
 type HelmReleaseSpec struct {
 	// Chart defines the template of the v1beta2.HelmChart that should be created
 	// for this HelmRelease.
 	// +optional
 	Chart HelmChartTemplate `json:"chart"`
 
-	// ChartRef holds a reference to a v1beta2.HelmChart resource
+	// ChartRef holds a reference to a source controller resource containing the
+	// Helm chart artifact.
 	// +optional
 	ChartRef *CrosssNameSpaceSourceReference `json:"chartRef,omitempty"`
 

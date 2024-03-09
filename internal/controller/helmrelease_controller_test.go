@@ -2034,14 +2034,16 @@ func TestHelmReleaseReconciler_getHelmChart(t *testing.T) {
 			intacl.AllowCrossNamespaceRef = !tt.disallowCrossNS
 			t.Cleanup(func() { intacl.AllowCrossNamespaceRef = !curAllow })
 
-			got, err := r.getHelmChart(context.TODO(), tt.rel)
+			got, err := r.getSource(context.TODO(), tt.rel)
 			if tt.wantErr {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(got).To(BeNil())
 				return
 			}
 			g.Expect(err).ToNot(HaveOccurred())
-			expect := g.Expect(got.ObjectMeta)
+			hc, ok := got.(*sourcev1b2.HelmChart)
+			g.Expect(ok).To(BeTrue())
+			expect := g.Expect(hc.ObjectMeta)
 			if tt.expectChart {
 				expect.To(BeEquivalentTo(tt.chart.ObjectMeta))
 			} else {
@@ -2330,6 +2332,8 @@ func TestValuesReferenceValidation(t *testing.T) {
 func Test_isHelmChartReady(t *testing.T) {
 	mock := &sourcev1b2.HelmChart{
 		ObjectMeta: metav1.ObjectMeta{
+			Name:       "mock",
+			Namespace:  "default",
 			Generation: 2,
 		},
 		Status: sourcev1b2.HelmChartStatus{
@@ -2363,7 +2367,7 @@ func Test_isHelmChartReady(t *testing.T) {
 				return m
 			}(),
 			want:       false,
-			wantReason: "latest generation of object has not been reconciled",
+			wantReason: "HelmChart 'default/mock' is not ready: latest generation of object has not been reconciled",
 		},
 		{
 			name: "chart generation differs from observed generation while Ready=False",
@@ -2374,7 +2378,7 @@ func Test_isHelmChartReady(t *testing.T) {
 				return m
 			}(),
 			want:       false,
-			wantReason: "some reason",
+			wantReason: "HelmChart 'default/mock' is not ready: some reason",
 		},
 		{
 			name: "chart has Stalled=True",
@@ -2385,7 +2389,7 @@ func Test_isHelmChartReady(t *testing.T) {
 				return m
 			}(),
 			want:       false,
-			wantReason: "some stalled reason",
+			wantReason: "HelmChart 'default/mock' is not ready: some stalled reason",
 		},
 		{
 			name: "chart does not have an Artifact",
@@ -2395,7 +2399,7 @@ func Test_isHelmChartReady(t *testing.T) {
 				return m
 			}(),
 			want:       false,
-			wantReason: "does not have an artifact",
+			wantReason: "HelmChart 'default/mock' is not ready: does not have an artifact",
 		},
 	}
 	for _, tt := range tests {

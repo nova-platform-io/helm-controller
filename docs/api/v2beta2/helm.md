@@ -78,8 +78,23 @@ HelmChartTemplate
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>Chart defines the template of the v1beta2.HelmChart that should be created
 for this HelmRelease.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>chartRef</code><br>
+<em>
+<a href="#helm.toolkit.fluxcd.io/v2beta2.CrosssNameSpaceSourceReference">
+CrosssNameSpaceSourceReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ChartRef holds a reference to a v1beta2.HelmChart resource</p>
 </td>
 </tr>
 <tr>
@@ -469,6 +484,74 @@ string
 </table>
 </div>
 </div>
+<h3 id="helm.toolkit.fluxcd.io/v2beta2.CrosssNameSpaceSourceReference">CrosssNameSpaceSourceReference
+</h3>
+<p>
+(<em>Appears on:</em>
+<a href="#helm.toolkit.fluxcd.io/v2beta2.HelmReleaseSpec">HelmReleaseSpec</a>)
+</p>
+<p>CrosssNameSpaceSourceReference contains enough information to let you locate
+the typed referenced object at cluster level.</p>
+<div class="md-typeset__scrollwrap">
+<div class="md-typeset__table">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>apiVersion</code><br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>APIVersion of the referent.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>kind</code><br>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Kind of the referent.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>name</code><br>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of the referent.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>namespace</code><br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Namespace of the referent.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
 <h3 id="helm.toolkit.fluxcd.io/v2beta2.DriftDetection">DriftDetection
 </h3>
 <p>
@@ -534,10 +617,6 @@ handle differences between the manifest in the Helm storage and the resources
 currently existing in the cluster.</p>
 <h3 id="helm.toolkit.fluxcd.io/v2beta2.Filter">Filter
 </h3>
-<p>
-(<em>Appears on:</em>
-<a href="#helm.toolkit.fluxcd.io/v2beta2.Test">Test</a>)
-</p>
 <p>Filter holds the configuration for individual Helm test filters.</p>
 <div class="md-typeset__scrollwrap">
 <div class="md-typeset__table">
@@ -1009,8 +1088,23 @@ HelmChartTemplate
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>Chart defines the template of the v1beta2.HelmChart that should be created
 for this HelmRelease.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>chartRef</code><br>
+<em>
+<a href="#helm.toolkit.fluxcd.io/v2beta2.CrosssNameSpaceSourceReference">
+CrosssNameSpaceSourceReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ChartRef holds a reference to a v1beta2.HelmChart resource</p>
 </td>
 </tr>
 <tr>
@@ -2267,9 +2361,7 @@ Kubernetes meta/v1.Time
 <td>
 <code>testHooks</code><br>
 <em>
-<a href="#helm.toolkit.fluxcd.io/v2beta2.TestHookStatus">
-TestHookStatus
-</a>
+map[string]*github.com/fluxcd/helm-controller/api/v2beta2.TestHookStatus
 </em>
 </td>
 <td>
@@ -2283,7 +2375,7 @@ run by the controller.</p>
 </div>
 </div>
 <h3 id="helm.toolkit.fluxcd.io/v2beta2.Snapshots">Snapshots
-(<code>[]*./api/v2beta2.Snapshot</code> alias)</h3>
+(<code>[]*github.com/fluxcd/helm-controller/api/v2beta2.Snapshot</code> alias)</h3>
 <p>
 (<em>Appears on:</em>
 <a href="#helm.toolkit.fluxcd.io/v2beta2.HelmReleaseStatus">HelmReleaseStatus</a>)
@@ -2352,8 +2444,8 @@ actions in &lsquo;Install.IgnoreTestFailures&rsquo; and &lsquo;Upgrade.IgnoreTes
 <td>
 <code>filters</code><br>
 <em>
-<a href="#helm.toolkit.fluxcd.io/v2beta2.Filter">
-Filter
+<a href="#helm.toolkit.fluxcd.io/v2beta2.[]github.com/fluxcd/helm-controller/api/v2beta2.Filter">
+[]github.com/fluxcd/helm-controller/api/v2beta2.Filter
 </a>
 </em>
 </td>
@@ -2367,10 +2459,6 @@ Filter
 </div>
 <h3 id="helm.toolkit.fluxcd.io/v2beta2.TestHookStatus">TestHookStatus
 </h3>
-<p>
-(<em>Appears on:</em>
-<a href="#helm.toolkit.fluxcd.io/v2beta2.Snapshot">Snapshot</a>)
-</p>
 <p>TestHookStatus holds the status information for a test hook as observed
 to be run by the controller.</p>
 <div class="md-typeset__scrollwrap">

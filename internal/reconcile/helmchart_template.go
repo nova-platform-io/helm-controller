@@ -76,6 +76,24 @@ func NewHelmChartTemplate(client client.Client, recorder record.EventRecorder, f
 	}
 }
 
+func isChartRefPresent(obj *v2.HelmRelease) bool {
+	return obj.Spec.ChartRef != nil
+}
+
+func isChartTemplatePresent(obj *v2.HelmRelease) bool {
+	return obj.Spec.Chart.Spec.Chart != ""
+}
+
+func mustCleanDeployedChart(obj *v2.HelmRelease) bool {
+	if isChartRefPresent(obj) && !isChartTemplatePresent(obj) {
+		if obj.Status.HelmChart != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (r *HelmChartTemplate) Reconcile(ctx context.Context, req *Request) error {
 	var (
 		obj      = req.Object
@@ -93,6 +111,20 @@ func (r *HelmChartTemplate) Reconcile(ctx context.Context, req *Request) error {
 		if err := r.reconcileDelete(ctx, req.Object); err != nil || !obj.DeletionTimestamp.IsZero() {
 			return err
 		}
+	}
+
+	if mustCleanDeployedChart(obj) {
+		// If the HelmRelease has a ChartRef and no Chart template, and the
+		// HelmChart is present, we need to clean it up.
+		if err := r.reconcileDelete(ctx, req.Object); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if isChartRefPresent(obj) {
+		// if a chartRef is present, we do not need to reconcile the HelmChart from the template.
+		return nil
 	}
 
 	// Confirm we are allowed to fetch the HelmChart.

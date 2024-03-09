@@ -2228,8 +2228,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: either chart or chartRef must be set
-              rule: (has(self.chart) && !has(self.chartRef) || (!has(self.chart) &&
-                has(self.chartRef))
+              rule: (has(self.chart) && !has(self.chartRef)) || (!has(self.chart)
+                && has(self.chartRef))
           status:
             default:
               observedGeneration: -1
