@@ -87,14 +87,15 @@ for this HelmRelease.</p>
 <td>
 <code>chartRef</code><br>
 <em>
-<a href="#helm.toolkit.fluxcd.io/v2beta2.CrosssNameSpaceSourceReference">
-CrosssNameSpaceSourceReference
+<a href="#helm.toolkit.fluxcd.io/v2beta2.CrossNamespaceSourceReference">
+CrossNamespaceSourceReference
 </a>
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>ChartRef holds a reference to a v1beta2.HelmChart resource</p>
+<p>ChartRef holds a reference to a source controller resource containing the
+Helm chart artifact.</p>
 </td>
 </tr>
 <tr>
@@ -484,13 +485,13 @@ string
 </table>
 </div>
 </div>
-<h3 id="helm.toolkit.fluxcd.io/v2beta2.CrosssNameSpaceSourceReference">CrosssNameSpaceSourceReference
+<h3 id="helm.toolkit.fluxcd.io/v2beta2.CrossNamespaceSourceReference">CrossNamespaceSourceReference
 </h3>
 <p>
 (<em>Appears on:</em>
 <a href="#helm.toolkit.fluxcd.io/v2beta2.HelmReleaseSpec">HelmReleaseSpec</a>)
 </p>
-<p>CrosssNameSpaceSourceReference contains enough information to let you locate
+<p>CrossNamespaceSourceReference contains enough information to let you locate
 the typed referenced object at cluster level.</p>
 <div class="md-typeset__scrollwrap">
 <div class="md-typeset__table">
@@ -1097,14 +1098,15 @@ for this HelmRelease.</p>
 <td>
 <code>chartRef</code><br>
 <em>
-<a href="#helm.toolkit.fluxcd.io/v2beta2.CrosssNameSpaceSourceReference">
-CrosssNameSpaceSourceReference
+<a href="#helm.toolkit.fluxcd.io/v2beta2.CrossNamespaceSourceReference">
+CrossNamespaceSourceReference
 </a>
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>ChartRef holds a reference to a v1beta2.HelmChart resource</p>
+<p>ChartRef holds a reference to a source controller resource containing the
+Helm chart artifact.</p>
 </td>
 </tr>
 <tr>

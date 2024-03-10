@@ -84,7 +84,7 @@ type HelmReleaseSpec struct {
 	// ChartRef holds a reference to a source controller resource containing the
 	// Helm chart artifact.
 	// +optional
-	ChartRef *CrosssNameSpaceSourceReference `json:"chartRef,omitempty"`
+	ChartRef *CrossNamespaceSourceReference `json:"chartRef,omitempty"`
 
 	// Interval at which to reconcile the Helm release.
 	// +kubebuilder:validation:Type=string
@@ -1245,6 +1245,16 @@ func (in *HelmRelease) SetConditions(conditions []metav1.Condition) {
 // Deprecated: use GetConditions instead.
 func (in *HelmRelease) GetStatusConditions() *[]metav1.Condition {
 	return &in.Status.Conditions
+}
+
+// IsChartRefPresent returns true if the HelmRelease has a ChartRef.
+func (in *HelmRelease) IsChartRefPresent() bool {
+	return in.Spec.ChartRef != nil
+}
+
+// IsChartTemplatePresent returns true if the HelmRelease has a ChartTemplate.
+func (in *HelmRelease) IsChartTemplatePresent() bool {
+	return in.Spec.Chart.Spec.Chart != ""
 }
 
 // +kubebuilder:object:root=true

@@ -2016,6 +2016,25 @@ func TestHelmReleaseReconciler_getHelmChart(t *testing.T) {
 			wantErr:         true,
 			disallowCrossNS: true,
 		},
+		{
+			"get chart from reference",
+			&v2.HelmRelease{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+				},
+				Spec: v2.HelmReleaseSpec{
+					ChartRef: &v2.CrossNamespaceSourceReference{
+						Kind:      "HelmChart",
+						Name:      "some-chart-name",
+						Namespace: "some-namespace",
+					},
+				},
+			},
+			chart,
+			true,
+			false,
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2410,6 +2429,92 @@ func Test_isHelmChartReady(t *testing.T) {
 			}
 			if gotReason != tt.wantReason {
 				t.Errorf("isHelmChartReady() reason = %v, want %v", gotReason, tt.wantReason)
+			}
+		})
+	}
+}
+
+func Test_isOCIRepositoryReady(t *testing.T) {
+	mock := &sourcev1b2.OCIRepository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "mock",
+			Namespace:  "default",
+			Generation: 2,
+		},
+		Status: sourcev1b2.OCIRepositoryStatus{
+			ObservedGeneration: 2,
+			Conditions: []metav1.Condition{
+				{
+					Type:   meta.ReadyCondition,
+					Status: metav1.ConditionTrue,
+				},
+			},
+			Artifact: &sourcev1.Artifact{},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		obj        *sourcev1b2.OCIRepository
+		want       bool
+		wantReason string
+	}{
+		{
+			name: "OCIRepository is ready",
+			obj:  mock.DeepCopy(),
+			want: true,
+		},
+		{
+			name: "OCIRepository generation differs from observed generation while Ready=True",
+			obj: func() *sourcev1b2.OCIRepository {
+				m := mock.DeepCopy()
+				m.Generation = 3
+				return m
+			}(),
+			want:       false,
+			wantReason: "OCIRepository 'default/mock' is not ready: latest generation of object has not been reconciled",
+		},
+		{
+			name: "OCIRepository generation differs from observed generation while Ready=False",
+			obj: func() *sourcev1b2.OCIRepository {
+				m := mock.DeepCopy()
+				m.Generation = 3
+				conditions.MarkFalse(m, meta.ReadyCondition, "Reason", "some reason")
+				return m
+			}(),
+			want:       false,
+			wantReason: "OCIRepository 'default/mock' is not ready: some reason",
+		},
+		{
+			name: "OCIRepository has Stalled=True",
+			obj: func() *sourcev1b2.OCIRepository {
+				m := mock.DeepCopy()
+				conditions.MarkFalse(m, meta.ReadyCondition, "Reason", "some reason")
+				conditions.MarkStalled(m, "Reason", "some stalled reason")
+				return m
+			}(),
+			want:       false,
+			wantReason: "OCIRepository 'default/mock' is not ready: some stalled reason",
+		},
+		{
+			name: "OCIRepository does not have an Artifact",
+			obj: func() *sourcev1b2.OCIRepository {
+				m := mock.DeepCopy()
+				m.Status.Artifact = nil
+				return m
+			}(),
+			want:       false,
+			wantReason: "OCIRepository 'default/mock' is not ready: does not have an artifact",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotReason := isOCIRepositoryReady(tt.obj)
+			if got != tt.want {
+				t.Errorf("isOCIRepositoryReady() got = %v, want %v", got, tt.want)
+			}
+			if gotReason != tt.wantReason {
+				t.Errorf("isOCIRepositoryReady() reason = %v, want %v", gotReason, tt.wantReason)
 			}
 		})
 	}

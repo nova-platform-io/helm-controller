@@ -673,7 +673,7 @@ func (r *HelmReleaseReconciler) buildRESTClientGetter(ctx context.Context, obj *
 // It returns the source object or an error.
 func (r *HelmReleaseReconciler) getSource(ctx context.Context, obj *v2.HelmRelease) (source.Source, error) {
 	var name, namespace string
-	if isChartRefPresent(obj) {
+	if obj.IsChartRefPresent() {
 		if obj.Spec.ChartRef.Kind == sourcev1.OCIRepositoryKind {
 			return r.getHelmChartFromOCIRef(ctx, obj)
 		}
@@ -855,26 +855,18 @@ func isOCIRepositoryReady(obj *sourcev1.OCIRepository) (bool, string) {
 	}
 }
 
-func isChartRefPresent(obj *v2.HelmRelease) bool {
-	return obj.Spec.ChartRef != nil
-}
-
-func isChartTemplatePresent(obj *v2.HelmRelease) bool {
-	return obj.Spec.Chart.Spec.Chart != ""
-}
-
 func isValidChartRef(obj *v2.HelmRelease) bool {
-	return (isChartRefPresent(obj) && !isChartTemplatePresent(obj)) ||
-		(!isChartRefPresent(obj) && isChartTemplatePresent(obj))
+	return (obj.IsChartRefPresent() && !obj.IsChartTemplatePresent()) ||
+		(!obj.IsChartRefPresent() && obj.IsChartTemplatePresent())
 }
 
 func getNamespacedName(obj *v2.HelmRelease) (types.NamespacedName, error) {
 	namespacedName := types.NamespacedName{}
 	switch {
-	case isChartRefPresent(obj) && !isChartTemplatePresent(obj):
+	case obj.IsChartRefPresent() && !obj.IsChartTemplatePresent():
 		namespacedName.Namespace = obj.Spec.ChartRef.Namespace
 		namespacedName.Name = obj.Spec.ChartRef.Name
-	case !isChartRefPresent(obj) && isChartTemplatePresent(obj):
+	case !obj.IsChartRefPresent() && obj.IsChartTemplatePresent():
 		namespacedName.Namespace = obj.Spec.Chart.GetNamespace(obj.GetNamespace())
 		namespacedName.Name = obj.GetHelmChartName()
 	default:

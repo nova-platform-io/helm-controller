@@ -76,24 +76,6 @@ func NewHelmChartTemplate(client client.Client, recorder record.EventRecorder, f
 	}
 }
 
-func isChartRefPresent(obj *v2.HelmRelease) bool {
-	return obj.Spec.ChartRef != nil
-}
-
-func isChartTemplatePresent(obj *v2.HelmRelease) bool {
-	return obj.Spec.Chart.Spec.Chart != ""
-}
-
-func mustCleanDeployedChart(obj *v2.HelmRelease) bool {
-	if isChartRefPresent(obj) && !isChartTemplatePresent(obj) {
-		if obj.Status.HelmChart != "" {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (r *HelmChartTemplate) Reconcile(ctx context.Context, req *Request) error {
 	var (
 		obj      = req.Object
@@ -122,7 +104,7 @@ func (r *HelmChartTemplate) Reconcile(ctx context.Context, req *Request) error {
 		return nil
 	}
 
-	if isChartRefPresent(obj) {
+	if obj.IsChartRefPresent() {
 		// if a chartRef is present, we do not need to reconcile the HelmChart from the template.
 		return nil
 	}
@@ -261,4 +243,14 @@ func buildHelmChartFromTemplate(obj *v2.HelmRelease) *sourcev1.HelmChart {
 		result.SetLabels(metaTpl.Labels)
 	}
 	return result
+}
+
+func mustCleanDeployedChart(obj *v2.HelmRelease) bool {
+	if obj.IsChartRefPresent() && !obj.IsChartTemplatePresent() {
+		if obj.Status.HelmChart != "" {
+			return true
+		}
+	}
+
+	return false
 }

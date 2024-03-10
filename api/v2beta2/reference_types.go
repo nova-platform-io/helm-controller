@@ -42,9 +42,9 @@ type CrossNamespaceObjectReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// CrosssNameSpaceSourceReference contains enough information to let you locate
+// CrossNamespaceSourceReference contains enough information to let you locate
 // the typed referenced object at cluster level.
-type CrosssNameSpaceSourceReference struct {
+type CrossNamespaceSourceReference struct {
 	// APIVersion of the referent.
 	// +optional
 	APIVersion string `json:"apiVersion,omitempty"`
