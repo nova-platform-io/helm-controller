@@ -1430,7 +1430,6 @@ spec:
                     description: Kind of the referent.
                     enum:
                     - OCIRepository
-                    - HelmChart
                     type: string
                   name:
                     description: Name of the referent.

@@ -1,0 +1,34 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: podinfo-ocirepo
+spec:
+  interval: 10m
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    tag: 6.6.0
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: podinfo-from-ocirepo
+spec:
+  releaseName: podinfo
+  chartRef:
+    kind: OCIRepository
+    name: podinfo-ocirepo
+  interval: 50m
+  driftDetection:
+    mode: enabled
+  install:
+    timeout: 10m
+    remediation:
+      retries: 3
+  upgrade:
+    timeout: 10m
+  values:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi

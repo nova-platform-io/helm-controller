@@ -143,7 +143,7 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 
 		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
 			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "Fulfilling prerequisites"),
-			*conditions.FalseCondition(meta.ReadyCondition, v2.ArtifactFailedReason, "could not get HelmChart object"),
+			*conditions.FalseCondition(meta.ReadyCondition, v2.ArtifactFailedReason, "could not get Source object"),
 		}))
 	})
 
@@ -228,7 +228,7 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 
 		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
 			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
-			*conditions.FalseCondition(meta.ReadyCondition, "HelmChartNotReady", "HelmChart 'mock/chart' is not ready"),
+			*conditions.FalseCondition(meta.ReadyCondition, "SourceNotReady", "HelmChart 'mock/chart' is not ready"),
 		}))
 	})
 
@@ -280,7 +280,7 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 
 		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
 			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
-			*conditions.FalseCondition(meta.ReadyCondition, "HelmChartNotReady", "HelmChart 'mock/chart' is not ready"),
+			*conditions.FalseCondition(meta.ReadyCondition, "SourceNotReady", "HelmChart 'mock/chart' is not ready"),
 		}))
 	})
 
@@ -332,7 +332,7 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 
 		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
 			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
-			*conditions.FalseCondition(meta.ReadyCondition, "HelmChartNotReady", "HelmChart 'mock/chart' is not ready"),
+			*conditions.FalseCondition(meta.ReadyCondition, "SourceNotReady", "HelmChart 'mock/chart' is not ready"),
 		}))
 	})
 
@@ -444,7 +444,7 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 
 		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
 			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
-			*conditions.FalseCondition(meta.ReadyCondition, v2.ArtifactFailedReason, "Chart not ready"),
+			*conditions.FalseCondition(meta.ReadyCondition, v2.ArtifactFailedReason, "Source not ready"),
 		}))
 	})
 
@@ -862,7 +862,7 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 			v2.DependencyNotReadyReason,
 			aclv1.AccessDeniedReason,
 			v2.ArtifactFailedReason,
-			"HelmChartNotReady",
+			"SourceNotReady",
 			"ValuesError",
 			"RESTClientError",
 			"FactoryError",
@@ -885,6 +885,390 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 			g.Expect(ready.Status).To(Equal(metav1.ConditionUnknown))
 			g.Expect(ready.Reason).To(Equal(meta.ProgressingReason))
 		}
+	})
+}
+
+func TestHelmReleaseReconciler_reconcileReleaseFromOCIRepositorySource(t *testing.T) {
+	t.Run("handles ChartRef get failure", func(t *testing.T) {
+		g := NewWithT(t)
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock",
+				},
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(obj).
+				Build(),
+			EventRecorder: record.NewFakeRecorder(32),
+		}
+
+		_, err := r.reconcileRelease(context.TODO(), patch.NewSerialPatcher(obj, r.Client), obj)
+		g.Expect(err).To(HaveOccurred())
+
+		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
+			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "Fulfilling prerequisites"),
+			*conditions.FalseCondition(meta.ReadyCondition, v2.ArtifactFailedReason, "could not get Source object"),
+		}))
+	})
+
+	t.Run("handles ACL error for ChartRef", func(t *testing.T) {
+		g := NewWithT(t)
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock-other",
+				},
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(obj).
+				Build(),
+			EventRecorder: record.NewFakeRecorder(32),
+		}
+
+		res, err := r.reconcileRelease(context.TODO(), patch.NewSerialPatcher(obj, r.Client), obj)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(errors.Is(err, reconcile.TerminalError(nil))).To(BeTrue())
+		g.Expect(res.IsZero()).To(BeTrue())
+
+		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
+			*conditions.TrueCondition(meta.StalledCondition, acl.AccessDeniedReason, "cross-namespace references are not allowed"),
+			*conditions.FalseCondition(meta.ReadyCondition, acl.AccessDeniedReason, "cross-namespace references are not allowed"),
+		}))
+	})
+
+	t.Run("waits for ChartRef to have an Artifact", func(t *testing.T) {
+		g := NewWithT(t)
+
+		ocirepo := &sourcev1b2.OCIRepository{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ocirepo",
+				Namespace:  "mock",
+				Generation: 2,
+			},
+			Status: sourcev1b2.OCIRepositoryStatus{
+				ObservedGeneration: 2,
+				Artifact:           nil,
+				Conditions: []metav1.Condition{
+					{
+						Type:   meta.ReadyCondition,
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+		}
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock",
+				},
+				Interval: metav1.Duration{Duration: 1 * time.Second},
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(ocirepo, obj).
+				Build(),
+		}
+
+		res, err := r.reconcileRelease(context.TODO(), patch.NewSerialPatcher(obj, r.Client), obj)
+		g.Expect(err).To(Equal(errWaitForChart))
+		g.Expect(res.RequeueAfter).To(Equal(obj.Spec.Interval.Duration))
+
+		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
+			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
+			*conditions.FalseCondition(meta.ReadyCondition, "SourceNotReady", "OCIRepository 'mock/ocirepo' is not ready"),
+		}))
+	})
+
+	t.Run("confirms ChartRef has an Artifact", func(t *testing.T) {
+		g := NewWithT(t)
+
+		ocirepo := &sourcev1b2.OCIRepository{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ocirepo",
+				Namespace:  "mock",
+				Generation: 2,
+			},
+			Status: sourcev1b2.OCIRepositoryStatus{
+				ObservedGeneration: 2,
+				Artifact:           nil,
+				Conditions: []metav1.Condition{
+					{
+						Type:   meta.ReadyCondition,
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+		}
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock",
+				},
+				Interval: metav1.Duration{Duration: 1 * time.Second},
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(ocirepo, obj).
+				Build(),
+		}
+
+		res, err := r.reconcileRelease(context.TODO(), patch.NewSerialPatcher(obj, r.Client), obj)
+		g.Expect(err).To(Equal(errWaitForChart))
+		g.Expect(res.RequeueAfter).To(Equal(obj.Spec.Interval.Duration))
+
+		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
+			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
+			*conditions.FalseCondition(meta.ReadyCondition, "SourceNotReady", "OCIRepository 'mock/ocirepo' is not ready"),
+		}))
+	})
+
+	t.Run("reports values composition failure", func(t *testing.T) {
+		g := NewWithT(t)
+
+		ocirepo := &sourcev1b2.OCIRepository{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ocirepo",
+				Namespace:  "mock",
+				Generation: 2,
+			},
+			Spec: sourcev1b2.OCIRepositorySpec{
+				Interval: metav1.Duration{Duration: 1 * time.Second},
+			},
+			Status: sourcev1b2.OCIRepositoryStatus{
+				ObservedGeneration: 2,
+				Artifact:           &sourcev1.Artifact{},
+				Conditions: []metav1.Condition{
+					{
+						Type:   meta.ReadyCondition,
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+		}
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock",
+				},
+				ValuesFrom: []v2.ValuesReference{
+					{
+						Kind: "Secret",
+						Name: "missing",
+					},
+				},
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(ocirepo, obj).
+				Build(),
+			EventRecorder: record.NewFakeRecorder(32),
+		}
+
+		_, err := r.reconcileRelease(context.TODO(), patch.NewSerialPatcher(obj, r.Client), obj)
+		g.Expect(err).To(HaveOccurred())
+
+		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
+			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "Fulfilling prerequisites"),
+			*conditions.FalseCondition(meta.ReadyCondition, "ValuesError", "could not resolve Secret chart values reference 'mock/missing' with key 'values.yaml'"),
+		}))
+	})
+
+	t.Run("reports Helm chart load failure", func(t *testing.T) {
+		g := NewWithT(t)
+
+		ocirepo := &sourcev1b2.OCIRepository{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ocirepo",
+				Namespace:  "mock",
+				Generation: 2,
+			},
+			Spec: sourcev1b2.OCIRepositorySpec{
+				Interval: metav1.Duration{Duration: 1 * time.Second},
+			},
+			Status: sourcev1b2.OCIRepositoryStatus{
+				ObservedGeneration: 2,
+				Artifact: &sourcev1.Artifact{
+					URL: testServer.URL() + "/does-not-exist",
+				},
+				Conditions: []metav1.Condition{
+					{
+						Type:   meta.ReadyCondition,
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+		}
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock",
+				},
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(ocirepo, obj).
+				Build(),
+			requeueDependency: 10 * time.Second,
+			EventRecorder:     record.NewFakeRecorder(32),
+		}
+
+		res, err := r.reconcileRelease(context.TODO(), patch.NewSerialPatcher(obj, r.Client), obj)
+		g.Expect(err).To(Equal(errWaitForDependency))
+		g.Expect(res.RequeueAfter).To(Equal(r.requeueDependency))
+
+		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
+			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
+			*conditions.FalseCondition(meta.ReadyCondition, v2.ArtifactFailedReason, "Source not ready"),
+		}))
+	})
+	t.Run("report helmChart load failure when switching from existing HelmChat to chartRef", func(t *testing.T) {
+		g := NewWithT(t)
+
+		chart := &sourcev1b2.HelmChart{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "chart",
+				Namespace:  "mock",
+				Generation: 1,
+			},
+			Status: sourcev1b2.HelmChartStatus{
+				ObservedGeneration: 1,
+				Artifact:           &sourcev1.Artifact{},
+				Conditions: []metav1.Condition{
+					{
+						Type:   meta.ReadyCondition,
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+		}
+
+		ocirepo := &sourcev1b2.OCIRepository{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ocirepo",
+				Namespace:  "mock",
+				Generation: 2,
+			},
+			Spec: sourcev1b2.OCIRepositorySpec{
+				Interval: metav1.Duration{Duration: 1 * time.Second},
+			},
+			Status: sourcev1b2.OCIRepositoryStatus{
+				ObservedGeneration: 2,
+				Artifact: &sourcev1.Artifact{
+					URL: testServer.URL() + "/does-not-exist",
+				},
+				Conditions: []metav1.Condition{
+					{
+						Type:   meta.ReadyCondition,
+						Status: metav1.ConditionTrue,
+					},
+				},
+			},
+		}
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock",
+				},
+			},
+			Status: v2.HelmReleaseStatus{
+				HelmChart: "mock/chart",
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(chart, ocirepo, obj).
+				Build(),
+			requeueDependency: 10 * time.Second,
+			EventRecorder:     record.NewFakeRecorder(32),
+		}
+
+		res, err := r.reconcileRelease(context.TODO(), patch.NewSerialPatcher(obj, r.Client), obj)
+		g.Expect(err).To(Equal(errWaitForDependency))
+		g.Expect(res.RequeueAfter).To(Equal(r.requeueDependency))
+
+		g.Expect(obj.Status.Conditions).To(conditions.MatchConditions([]metav1.Condition{
+			*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, ""),
+			*conditions.FalseCondition(meta.ReadyCondition, v2.ArtifactFailedReason, "Source not ready"),
+		}))
 	})
 }
 
@@ -1020,7 +1404,7 @@ func TestHelmReleaseReconciler_reconcileDelete(t *testing.T) {
 	})
 }
 
-func TestHelmReleaseReconciler_reconileReleaseDeletion(t *testing.T) {
+func TestHelmReleaseReconciler_reconcileReleaseDeletion(t *testing.T) {
 	t.Run("uninstalls Helm release", func(t *testing.T) {
 		g := NewWithT(t)
 

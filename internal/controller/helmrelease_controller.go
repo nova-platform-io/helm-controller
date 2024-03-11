@@ -74,6 +74,8 @@ import (
 // +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases/finalizers,verbs=get;create;update;patch;delete
 // +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=helmcharts,verbs=get;list;watch
 // +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=helmcharts/status,verbs=get
+// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=ocirepositories,verbs=get;list;watch
+// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=ocirepositories/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // HelmReleaseReconciler reconciles a HelmRelease object.
@@ -155,7 +157,7 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if !isValidChartRef(obj) {
-		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("invalid HelmChart reference"))
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("invalid Chart reference"))
 	}
 
 	// Initialize the patch helper with the current version of the object.
@@ -277,7 +279,7 @@ func (r *HelmReleaseReconciler) reconcileRelease(ctx context.Context, patchHelpe
 			return ctrl.Result{}, reconcile.TerminalError(err)
 		}
 
-		msg := fmt.Sprintf("could not get HelmChart object: %s", err.Error())
+		msg := fmt.Sprintf("could not get Source object: %s", err.Error())
 		conditions.MarkFalse(obj, meta.ReadyCondition, v2.ArtifactFailedReason, msg)
 		return ctrl.Result{}, err
 	}
@@ -289,13 +291,13 @@ func (r *HelmReleaseReconciler) reconcileRelease(ctx context.Context, patchHelpe
 	// Check if the source is ready.
 	if ready, msg := isSourceReady(source); !ready {
 		log.Info(msg)
-		conditions.MarkFalse(obj, meta.ReadyCondition, "HelmChartNotReady", msg)
+		conditions.MarkFalse(obj, meta.ReadyCondition, "SourceNotReady", msg)
 		// Do not requeue immediately, when the artifact is created
 		// the watcher should trigger a reconciliation.
 		return jitter.JitteredRequeueInterval(ctrl.Result{RequeueAfter: obj.GetRequeueAfter()}), errWaitForChart
 	}
 	// Remove any stale corresponding Ready=False condition with Unknown.
-	if conditions.HasAnyReason(obj, meta.ReadyCondition, "HelmChartNotReady") {
+	if conditions.HasAnyReason(obj, meta.ReadyCondition, "SourceNotReady") {
 		conditions.MarkUnknown(obj, meta.ReadyCondition, meta.ProgressingReason, "reconciliation in progress")
 	}
 
@@ -315,7 +317,7 @@ func (r *HelmReleaseReconciler) reconcileRelease(ctx context.Context, patchHelpe
 	loadedChart, err := loader.SecureLoadChartFromURL(loader.NewRetryableHTTPClient(ctx, r.artifactFetchRetries), source.GetArtifact().URL, source.GetArtifact().Digest)
 	if err != nil {
 		if errors.Is(err, loader.ErrFileNotFound) {
-			msg := fmt.Sprintf("Chart not ready: artifact not found. Retrying in %s", r.requeueDependency.String())
+			msg := fmt.Sprintf("Source not ready: artifact not found. Retrying in %s", r.requeueDependency.String())
 			conditions.MarkFalse(obj, meta.ReadyCondition, v2.ArtifactFailedReason, msg)
 			log.Info(msg)
 			return ctrl.Result{RequeueAfter: r.requeueDependency}, errWaitForDependency
@@ -678,6 +680,9 @@ func (r *HelmReleaseReconciler) getSource(ctx context.Context, obj *v2.HelmRelea
 			return r.getHelmChartFromOCIRef(ctx, obj)
 		}
 		name, namespace = obj.Spec.ChartRef.Name, obj.Spec.ChartRef.Namespace
+		if namespace == "" {
+			namespace = obj.GetNamespace()
+		}
 	} else {
 		namespace, name = obj.Status.GetHelmChart()
 	}
@@ -696,7 +701,10 @@ func (r *HelmReleaseReconciler) getSource(ctx context.Context, obj *v2.HelmRelea
 }
 
 func (r *HelmReleaseReconciler) getHelmChartFromOCIRef(ctx context.Context, obj *v2.HelmRelease) (source.Source, error) {
-	namespace, name := obj.Spec.ChartRef.Name, obj.Spec.ChartRef.Namespace
+	name, namespace := obj.Spec.ChartRef.Name, obj.Spec.ChartRef.Namespace
+	if namespace == "" {
+		namespace = obj.GetNamespace()
+	}
 	ociRepoRef := types.NamespacedName{Namespace: namespace, Name: name}
 
 	if err := intacl.AllowsAccessTo(obj, sourcev1.OCIRepositoryKind, ociRepoRef); err != nil {
