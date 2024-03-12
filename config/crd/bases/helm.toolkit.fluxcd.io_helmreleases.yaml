@@ -1420,8 +1420,9 @@ spec:
                 - spec
                 type: object
               chartRef:
-                description: ChartRef holds a reference to a source controller resource
-                  containing the Helm chart artifact.
+                description: |-
+                  ChartRef holds a reference to a source controller resource containing the
+                  Helm chart artifact.
                 properties:
                   apiVersion:
                     description: APIVersion of the referent.

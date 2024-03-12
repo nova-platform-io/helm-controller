@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -889,6 +891,51 @@ func TestHelmReleaseReconciler_reconcileRelease(t *testing.T) {
 }
 
 func TestHelmReleaseReconciler_reconcileReleaseFromOCIRepositorySource(t *testing.T) {
+
+	t.Run("handles chartRef and Chart definition failure", func(t *testing.T) {
+		g := NewWithT(t)
+
+		obj := &v2.HelmRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "release",
+				Namespace: "mock",
+			},
+			Spec: v2.HelmReleaseSpec{
+				ChartRef: &v2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      "ocirepo",
+					Namespace: "mock",
+				},
+				Chart: v2.HelmChartTemplate{
+					Spec: v2.HelmChartTemplateSpec{
+						Chart: "mychart",
+						SourceRef: v2.CrossNamespaceObjectReference{
+							Name: "something",
+						},
+					},
+				},
+			},
+		}
+
+		r := &HelmReleaseReconciler{
+			Client: fake.NewClientBuilder().
+				WithScheme(NewTestScheme()).
+				WithStatusSubresource(&v2.HelmRelease{}).
+				WithObjects(obj).
+				Build(),
+		}
+
+		res, err := r.Reconcile(context.TODO(), reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: obj.GetNamespace(),
+				Name:      obj.GetName(),
+			},
+		})
+
+		// only chartRef or Chart must be set
+		g.Expect(errors.Is(err, reconcile.TerminalError(fmt.Errorf("invalid Chart reference")))).To(BeTrue())
+		g.Expect(res.IsZero()).To(BeTrue())
+	})
 	t.Run("handles ChartRef get failure", func(t *testing.T) {
 		g := NewWithT(t)
 

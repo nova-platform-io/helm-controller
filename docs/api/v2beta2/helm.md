@@ -2383,7 +2383,7 @@ run by the controller.</p>
 </div>
 </div>
 <h3 id="helm.toolkit.fluxcd.io/v2beta2.Snapshots">Snapshots
-(<code>[]*github.com/fluxcd/helm-controller/api/v2beta2.Snapshot</code> alias)</h3>
+(<code>[]*./api/v2beta2.Snapshot</code> alias)</h3>
 <p>
 (<em>Appears on:</em>
 <a href="#helm.toolkit.fluxcd.io/v2beta2.HelmReleaseStatus">HelmReleaseStatus</a>)

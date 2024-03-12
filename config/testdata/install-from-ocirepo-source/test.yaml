@@ -4,7 +4,7 @@ kind: OCIRepository
 metadata:
   name: podinfo-ocirepo
 spec:
-  interval: 10m
+  interval: 30s
   url: oci://ghcr.io/stefanprodan/charts/podinfo
   ref:
     tag: 6.6.0
@@ -14,19 +14,10 @@ kind: HelmRelease
 metadata:
   name: podinfo-from-ocirepo
 spec:
-  releaseName: podinfo
   chartRef:
     kind: OCIRepository
     name: podinfo-ocirepo
-  interval: 50m
-  driftDetection:
-    mode: enabled
-  install:
-    timeout: 10m
-    remediation:
-      retries: 3
-  upgrade:
-    timeout: 10m
+  interval: 30s
   values:
     resources:
       requests:
