@@ -1253,7 +1253,7 @@ func (in *HelmRelease) IsChartRefPresent() bool {
 }
 
 // IsChartTemplatePresent returns true if the HelmRelease has a ChartTemplate.
-func (in *HelmRelease) IsChartTemplatePresent() bool {
+func (in *HelmRelease) HasChartTemplate() bool {
 	return in.Spec.Chart.Spec.Chart != ""
 }
 
